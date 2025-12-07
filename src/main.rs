@@ -1,3 +1,4 @@
+use std::fs::read_to_string;
 use std::fmt;
 
 use quick_xml::Reader;
@@ -43,9 +44,8 @@ impl fmt::Display for Article {
     }
 }
 
-
-fn main() {
-    let body = reqwest::blocking::get("http://localhost")
+fn fetch_articles(url: Url, articles: &mut Vec<Article>) {
+    let body = reqwest::blocking::get(url)
         .expect("Could not establish connection")
         .text()
         .unwrap();
@@ -56,7 +56,6 @@ fn main() {
 
     let mut tag_stack: Vec<String> = Vec::new();
 
-    let mut articles: Vec<Article> = Vec::new();
     let mut current_item: Article = Article::new();
 
     loop {
@@ -92,8 +91,27 @@ fn main() {
             _ => ()
         } 
     }
+}
 
-    for article in articles.iter().rev() {
+fn main() {
+    let urls: Vec<Url> = read_to_string("feeds.txt")
+        .expect("Could not open file")
+        .lines()
+        .filter_map(|s| {
+            if let Ok(url) = Url::parse(s) {
+                Some(url)
+            } else {
+                eprintln!("Not valid domain: {s}");
+                None
+            }
+        }).collect();
+    
+    let mut articles: Vec<Article> = Vec::new();
+    for url in urls {
+        fetch_articles(url, &mut articles);
+    }
+
+    for article in articles {
         println!("{article}");
     }
 }
