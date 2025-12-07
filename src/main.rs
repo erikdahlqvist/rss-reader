@@ -2,6 +2,7 @@ use std::fmt;
 
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use url::Url;
 
 #[derive(Clone, Debug)]
 struct Article {
@@ -29,7 +30,9 @@ impl Article {
         } else if field == "pubDate" {
             self.pub_date = data.to_string();
         } else if field == "link" {
-            self.link = data.to_string();
+            if Url::parse(data).is_ok() {
+                self.link = data.to_string();
+            }
         }
     }
 }
