@@ -1,6 +1,7 @@
 use std::fs::read_to_string;
 use std::fmt;
 
+use chrono::{DateTime, FixedOffset, Local};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use url::Url;
@@ -9,8 +10,8 @@ use url::Url;
 struct Article {
     title: String,
     description: String,
-    pub_date: String,
-    link: String,
+    pub_date: Option<DateTime<FixedOffset>>,
+    link: Option<Url>,
 }
 
 impl Article {
@@ -18,8 +19,8 @@ impl Article {
         Article {
             title: String::new(),
             description: String::new(),
-            pub_date: String::new(),
-            link: String::new(),
+            pub_date: None,
+            link: None,
         }
     }
 
@@ -29,10 +30,15 @@ impl Article {
         } else if field == "description" {
             self.description = data.to_string();
         } else if field == "pubDate" {
-            self.pub_date = data.to_string();
+            if let Ok(pub_date) = DateTime::parse_from_rfc2822(data) {
+                let now = Local::now();
+                let tz = now.offset();
+
+                self.pub_date = Some(pub_date.with_timezone(tz));
+            }
         } else if field == "link" {
-            if Url::parse(data).is_ok() {
-                self.link = data.to_string();
+            if let Ok(link) = Url::parse(data) {
+                self.link = Some(link);
             }
         }
     }
@@ -40,7 +46,11 @@ impl Article {
 
 impl fmt::Display for Article {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "\nPublished: {} \n -- {} --\n{}\nRead more: {}\n", self.pub_date, self.title, self.description, self.link)
+        let pub_date = self.pub_date.map_or(String::from("unavailable"), |d| d.to_string());
+        
+        let link = self.link.as_ref().map_or(String::from("unavailable"), |l| l.to_string());
+
+        write!(f, "\nPublished: {} \n -- {} --\n{}\nRead more: {}\n", pub_date, self.title, self.description, link)
     }
 }
 
@@ -111,7 +121,7 @@ fn main() {
         fetch_articles(url, &mut articles);
     }
 
-    for article in articles {
+    for article in articles.iter().rev() {
         println!("{article}");
     }
 }
