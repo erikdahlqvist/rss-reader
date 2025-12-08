@@ -1,10 +1,37 @@
 use std::fs::read_to_string;
+use std::str::FromStr;
 use std::{env, fmt};
 
 use chrono::{DateTime, FixedOffset, Local};
 use quick_xml::Reader;
 use quick_xml::events::Event;
 use url::Url;
+
+#[derive(PartialEq)]
+enum Tag {
+    Item,
+    Title,
+    Description,
+    PubDate,
+    Link,
+    Other(String),
+} use Tag::*;
+
+impl FromStr for Tag {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s {
+            "item" => Item,
+            "title" => Title,
+            "description" => Description,
+            "pubDate" => PubDate,
+            "link" => Link,
+            other => Other(other.to_string()),
+        })
+    }
+}
+
 
 #[derive(Clone, Debug)]
 struct Article {
@@ -24,22 +51,20 @@ impl Article {
         }
     }
 
-    fn update_field(&mut self, field: &str, data: &str) {
-        if field == "title" {
-            self.title = data.to_string();
-        } else if field == "description" {
-            self.description = data.to_string();
-        } else if field == "pubDate" {
-            if let Ok(pub_date) = DateTime::parse_from_rfc2822(data) {
+    fn update_field(&mut self, tag: &Tag, data: &str) {
+        match tag {
+            Title => self.title = data.to_string(),
+            Description => self.description = data.to_string(),
+            PubDate => if let Ok(pub_date) = DateTime::parse_from_rfc2822(data) {
                 let now = Local::now();
                 let tz = now.offset();
 
                 self.pub_date = Some(pub_date.with_timezone(tz));
-            }
-        } else if field == "link" {
-            if let Ok(link) = Url::parse(data) {
+            },
+            Link => if let Ok(link) = Url::parse(data) {
                 self.link = Some(link);
-            }
+            },
+            _ => (),
         }
     }
 }
@@ -64,23 +89,24 @@ fn fetch_articles(url: Url, articles: &mut Vec<Article>) {
 
     let mut buf: Vec<u8> = Vec::new();
 
-    let mut tag_stack: Vec<String> = Vec::new();
+    let mut tag_stack: Vec<Tag> = Vec::new();
 
     let mut current_item: Article = Article::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Start(e)) => {
-                let tag = str::from_utf8(e.name().as_ref()).unwrap().to_string();
-                tag_stack.push(tag.clone());
+                let tag = Tag::from_str(str::from_utf8(e.name().as_ref()).unwrap()).ok().unwrap();
 
-                if tag == "item".to_string() {
+                if tag == Item {
                     current_item = Article::new();
                 }
+                
+                tag_stack.push(tag);
             },
             Ok(Event::End(_)) => {
                 if let Some(tag) = tag_stack.pop() {
-                    if tag == "item".to_string() {
+                    if tag == Item {
                         articles.push(current_item.clone());
                     }
                 }
