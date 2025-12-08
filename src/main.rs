@@ -1,5 +1,5 @@
 use std::fs::read_to_string;
-use std::fmt;
+use std::{env, fmt};
 
 use chrono::{DateTime, FixedOffset, Local};
 use quick_xml::Reader;
@@ -104,17 +104,39 @@ fn fetch_articles(url: Url, articles: &mut Vec<Article>) {
 }
 
 fn main() {
-    let urls: Vec<Url> = read_to_string("feeds.txt")
-        .expect("Could not open file")
-        .lines()
-        .filter_map(|s| {
-            if let Ok(url) = Url::parse(s) {
-                Some(url)
+    let mut args = env::args();
+    let parameter = args.nth(1);
+    let value = args.next();
+
+    let mut urls: Vec<Url> = Vec::new();
+    match (parameter, value) {
+        (Some(_), None) => {
+            panic!("Must provide a value");
+        },
+        (Some(parameter), Some(value)) => {
+            // Should fix a function for parameter validation
+            if parameter == String::from("-u") || parameter == String::from("--url") {
+                urls.push(Url::parse(&value).expect("Not valid URL"));
             } else {
-                eprintln!("Not valid domain: {s}");
-                None
+                panic!("Not valid parameter");
             }
-        }).collect();
+        },
+        _ => (),
+    }
+
+    if urls.is_empty() {
+        urls = read_to_string("feeds.txt")
+            .expect("Could not open file")
+            .lines()
+            .filter_map(|s| {
+                if let Ok(url) = Url::parse(s) {
+                    Some(url)
+                } else {
+                    eprintln!("Not valid domain: {s}");
+                    None
+                }
+            }).collect();
+    }
     
     let mut articles: Vec<Article> = Vec::new();
     for url in urls {
