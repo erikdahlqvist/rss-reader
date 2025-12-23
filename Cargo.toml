@@ -3,10 +3,10 @@ name = "rss-reader"
 version = "0.1.0"
 edition = "2024"
 license = "(GPL-3.0-or-later)"
-license-file = "LICENSE"
 
 [dependencies]
 chrono = "0.4.42"
 quick-xml = "0.38.4"
 reqwest = { version = "0.12.24", features = ["blocking"] }
+sqlite = "0.37.0"
 url = "2.5.7"

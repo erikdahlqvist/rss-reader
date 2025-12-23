@@ -1,10 +1,10 @@
-use std::fs::read_to_string;
 use std::str::FromStr;
 use std::{env, fmt};
 
 use chrono::{DateTime, FixedOffset, Local};
 use quick_xml::Reader;
 use quick_xml::events::Event;
+use sqlite::Connection;
 use url::Url;
 
 #[derive(PartialEq)]
@@ -129,40 +129,75 @@ fn fetch_articles(url: Url, articles: &mut Vec<Article>) {
     }
 }
 
+fn read_feeds(connection: &Connection) -> Vec<Url> {
+    connection
+        .execute("CREATE TABLE IF NOT EXISTS feeds (url TEXT PRIMARY KEY)")
+        .unwrap();
+
+    connection
+        .prepare("SELECT * FROM feeds")
+        .unwrap()
+        .into_iter()
+        .map(|row| Url::parse(row.unwrap().read::<&str, _>("url")).expect("Invalid URL"))
+        .collect()
+}
+
 fn main() {
     let mut args = env::args();
     let parameter = args.nth(1);
     let value = args.next();
 
-    let mut urls: Vec<Url> = Vec::new();
+    let connection = sqlite::open("reader.db").unwrap();
+
     match (parameter, value) {
-        (Some(_), None) => {
-            panic!("Must provide a value");
-        },
-        (Some(parameter), Some(value)) => {
-            // Should fix a function for parameter validation
-            if parameter == String::from("-u") || parameter == String::from("--url") {
-                urls.push(Url::parse(&value).expect("Not valid URL"));
-            } else {
-                panic!("Not valid parameter");
+        (Some(parameter), None) => {
+            if parameter == "list" {
+                read_feeds(&connection)
+                    .iter()
+                    .for_each(|feed| println!("{}", feed.as_str()));
+
+                return;
             }
+            panic!("Not valid command");
         },
+        (Some(parameter), Some(value)) =>
+            // Should fix a function for parameter validation
+            if parameter == String::from("add") {
+                Url::parse(&value).expect("Invalid URL");
+
+                connection
+                    .execute("CREATE TABLE IF NOT EXISTS feeds (url TEXT)")
+                    .unwrap();
+
+                let result = connection.execute(format!("INSERT INTO feeds VALUES ('{}')", value));
+
+                match result {
+                    Ok(_) => (),
+                    Err(sqlite::Error {
+                        code: Some(19),
+                        message: Some(_),
+                    }) => (),
+                    _ => result.unwrap()
+                }
+
+                return;
+            } else if parameter == String::from("remove") {
+                connection
+                    .execute("CREATE TABLE IF NOT EXISTS feeds (url TEXT)")
+                    .unwrap();
+
+                connection
+                    .execute(format!("DELETE FROM feeds WHERE url = '{}'", value))
+                    .unwrap();
+                
+                return;
+            } else {
+                panic!("Not valid command");
+            },
         _ => (),
     }
 
-    if urls.is_empty() {
-        urls = read_to_string("feeds.txt")
-            .expect("Could not open file")
-            .lines()
-            .filter_map(|s| {
-                if let Ok(url) = Url::parse(s) {
-                    Some(url)
-                } else {
-                    eprintln!("Not valid domain: {s}");
-                    None
-                }
-            }).collect();
-    }
+    let urls: Vec<Url> = read_feeds(&connection);
     
     let mut articles: Vec<Article> = Vec::new();
     for url in urls {
